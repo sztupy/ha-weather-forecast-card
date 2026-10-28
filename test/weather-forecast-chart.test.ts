@@ -811,6 +811,106 @@ describe("weather-forecast-card chart", () => {
       });
     });
 
+    it("should update chart with inverted cloud coverage when clear_sky attribute is selected", async () => {
+      const { card } = await createCardFixture({
+        forecast: { mode: ForecastMode.Chart, show_attribute_selector: true },
+      });
+
+      const chartElement = card.shadowRoot!.querySelector(
+        "wfc-forecast-chart"
+      ) as WfcForecastChart;
+
+      chartElement.forecast = forecastWithAllAttributes;
+      await chartElement.updateComplete;
+
+      const dropdown = chartElement.querySelector(
+        "wfc-chart-attribute-selector"
+      );
+      dropdown!.dispatchEvent(
+        new CustomEvent("selected", { detail: { value: "clear_sky" } })
+      );
+      await chartElement.updateComplete;
+
+      // @ts-expect-error: _chart is private
+      const chartInstance = chartElement._chart;
+      const datasets = chartInstance!.data.datasets;
+      expect(datasets.length).toBe(1);
+      expect(datasets[0].type).toBeUndefined();
+      expect(datasets[0].fill).toBe(false);
+
+      const clearSkyData = datasets[0].data;
+      forecastWithAllAttributes.forEach((f, i) => {
+        expect(clearSkyData[i]).toBe(100 - f.cloud_coverage);
+      });
+    });
+
+    it("should color the clear_sky line by daylight in the hourly forecast", async () => {
+      const dayColor = "rgb(255, 235, 59)";
+      const nightColor = "rgb(158, 158, 158)";
+      const { card } = await createCardFixture(
+        {
+          forecast: {
+            mode: ForecastMode.Chart,
+            default_chart_attribute: "clear_sky",
+          },
+        },
+        {
+          "--wfc-chart-clear-sky-day-color": dayColor,
+          "--wfc-chart-clear-sky-night-color": nightColor,
+        }
+      );
+
+      const chartElement = card.shadowRoot!.querySelector(
+        "wfc-forecast-chart"
+      ) as WfcForecastChart;
+
+      // 72 hours from now always spans both day and night at the mocked location
+      const hourlyForecast = TEST_FORECAST_HOURLY.map((f, i) => ({
+        ...f,
+        cloud_coverage: (i * 10) % 100,
+      }));
+      chartElement.forecastType = "hourly";
+      chartElement.forecast = hourlyForecast;
+      await chartElement.updateComplete;
+
+      // @ts-expect-error: _chart is private
+      const datasets = chartElement._chart!.data.datasets;
+      const gradientContext = {
+        chart: {
+          ctx: { createLinearGradient: vi.fn().mockReturnValue(mockGradient) },
+          chartArea: { left: 0, right: 300, top: 0, bottom: 150 },
+          scales: { x: { left: 0, right: 300, width: 300 } },
+        },
+      };
+
+      // @ts-expect-error: borderColor is a function
+      const gradient = datasets[0].borderColor(gradientContext);
+      expect(gradient).toBe(mockGradient);
+
+      // Two stops (slot start and end) per forecast slot, spanning the full width
+      const stops = mockGradient.addColorStop.mock.calls;
+      expect(stops).toHaveLength(hourlyForecast.length * 2);
+      expect(stops[0]![0]).toBe(0);
+      expect(stops[stops.length - 1]![0]).toBe(1);
+
+      const stopColors = stops.map(([, color]) => color);
+      expect(stopColors).toContain(dayColor);
+      expect(stopColors).toContain(nightColor);
+
+      // Sunrise/sunset slots fade: their start and end colors differ
+      const transitionSlots = hourlyForecast.filter(
+        (_, i) => stops[i * 2]![1] !== stops[i * 2 + 1]![1]
+      );
+      expect(transitionSlots.length).toBeGreaterThan(0);
+
+      const pointColors = hourlyForecast.map((_, dataIndex) =>
+        // @ts-expect-error: pointBackgroundColor is a function
+        datasets[0].pointBackgroundColor({ dataIndex })
+      );
+      expect(pointColors).toContain(dayColor);
+      expect(pointColors).toContain(nightColor);
+    });
+
     it("should update chart when apparent_temperature attribute is selected", async () => {
       const { card } = await createCardFixture({
         forecast: { mode: ForecastMode.Chart, show_attribute_selector: true },
@@ -914,6 +1014,7 @@ describe("weather-forecast-card chart", () => {
       expect(optionValues).toContain("pressure");
       expect(optionValues).not.toContain("uv_index");
       expect(optionValues).not.toContain("cloud_coverage");
+      expect(optionValues).not.toContain("clear_sky");
     });
 
     it("should close dropdown when closed event is fired", async () => {

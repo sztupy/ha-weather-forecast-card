@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getReferencedCurrentEntities } from "../src/helpers";
+import {
+  getForecastSlotDaylight,
+  getReferencedCurrentEntities,
+  getSuntimesInfo,
+} from "../src/helpers";
+import { HomeAssistant } from "custom-card-helpers";
 import { WeatherForecastCardConfig } from "../src/types";
 
 const baseConfig = (
@@ -119,5 +124,103 @@ describe("getReferencedCurrentEntities", () => {
         })
       )
     ).toEqual(["sensor.outdoor_temp"]);
+  });
+});
+
+describe("getForecastSlotDaylight", () => {
+  // Helsinki
+  const hass = {
+    config: { latitude: 60.1699, longitude: 24.9384 },
+  } as unknown as HomeAssistant;
+  const day = new Date("2024-03-20T12:00:00Z");
+  const { sunrise, sunset } = getSuntimesInfo(hass, day)!;
+
+  const hourSlotContaining = (date: Date) => {
+    const start = new Date(date);
+    start.setMinutes(0, 0, 0);
+    return { datetime: start.toISOString(), temperature: 0 };
+  };
+
+  it("marks a midday hourly slot as daylight", () => {
+    expect(
+      getForecastSlotDaylight(hass, hourSlotContaining(day), "hourly")
+    ).toEqual({ start: true, middle: true, end: true });
+  });
+
+  it("marks a midnight hourly slot as night", () => {
+    const midnight = new Date(sunset.getTime() + 4 * 3600000);
+    expect(
+      getForecastSlotDaylight(hass, hourSlotContaining(midnight), "hourly")
+    ).toEqual({ start: false, middle: false, end: false });
+  });
+
+  it("transitions from night to day in the sunrise slot", () => {
+    const slot = getForecastSlotDaylight(
+      hass,
+      hourSlotContaining(sunrise),
+      "hourly"
+    );
+    expect(slot.start).toBe(false);
+    expect(slot.end).toBe(true);
+  });
+
+  it("transitions from day to night in the sunset slot", () => {
+    const slot = getForecastSlotDaylight(
+      hass,
+      hourSlotContaining(sunset),
+      "hourly"
+    );
+    expect(slot.start).toBe(true);
+    expect(slot.end).toBe(false);
+  });
+
+  it("uses the group end time for aggregated hourly slots", () => {
+    const start = new Date(sunset.getTime() - 2 * 3600000);
+    start.setMinutes(0, 0, 0);
+    const groupEnd = new Date(sunset.getTime() + 2 * 3600000);
+    const slot = getForecastSlotDaylight(
+      hass,
+      {
+        datetime: start.toISOString(),
+        groupEndtime: groupEnd.toISOString(),
+        temperature: 0,
+      },
+      "hourly"
+    );
+    expect(slot.start).toBe(true);
+    expect(slot.end).toBe(false);
+  });
+
+  it("uses is_daytime for twice daily slots", () => {
+    const forecast = {
+      datetime: day.toISOString(),
+      temperature: 0,
+      is_daytime: false,
+    };
+    expect(getForecastSlotDaylight(hass, forecast, "twice_daily")).toEqual({
+      start: false,
+      middle: false,
+      end: false,
+    });
+  });
+
+  it("treats daily slots as daylight", () => {
+    const forecast = { datetime: day.toISOString(), temperature: 0 };
+    expect(getForecastSlotDaylight(hass, forecast, "daily")).toEqual({
+      start: true,
+      middle: true,
+      end: true,
+    });
+  });
+
+  it("treats slots as daylight when the location is unknown", () => {
+    const midnight = new Date(sunset.getTime() + 4 * 3600000);
+    expect(
+      getForecastSlotDaylight(
+        { config: {} } as unknown as HomeAssistant,
+        hourSlotContaining(midnight),
+        "hourly"
+      )
+    ).toEqual({ start: true, middle: true, end: true });
   });
 });

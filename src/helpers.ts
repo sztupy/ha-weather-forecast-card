@@ -7,6 +7,7 @@ import {
   SuntimesInfo,
   WeatherForecastCardConfig,
 } from "./types";
+import type { ForecastAttribute, ForecastType } from "./data/weather";
 
 export interface HourParts {
   hour: string;
@@ -229,6 +230,47 @@ export const getSuntimesInfo = (
     sunrise: times.sunrise,
     sunset: times.sunset,
     isNightTime: date < times.sunrise || date > times.sunset,
+  };
+};
+
+/**
+ * Daylight state (true = sun is up) at the start, middle and end of a forecast slot.
+ * A slot whose start and end differ contains a sunrise or sunset.
+ */
+export interface ForecastSlotDaylight {
+  start: boolean;
+  middle: boolean;
+  end: boolean;
+}
+
+/**
+ * Resolves whether a forecast slot is in daylight. Hourly slots are resolved from the
+ * sun position at the Home Assistant location; daily and twice daily slots have no
+ * intra-slot transitions and rely on `is_daytime` (daily forecasts count as daytime).
+ */
+export const getForecastSlotDaylight = (
+  hass: HomeAssistant | undefined,
+  forecast: ForecastAttribute,
+  forecastType: ForecastType
+): ForecastSlotDaylight => {
+  if (forecastType !== "hourly") {
+    const isDaytime = forecast.is_daytime !== false;
+    return { start: isDaytime, middle: isDaytime, end: isDaytime };
+  }
+
+  const start = toDate(forecast.datetime);
+  const end = forecast.groupEndtime
+    ? toDate(forecast.groupEndtime)
+    : endOfHour(start);
+  const middle = new Date((start.getTime() + end.getTime()) / 2);
+
+  const isDaylight = (date: Date) =>
+    !(getSuntimesInfo(hass, date)?.isNightTime ?? false);
+
+  return {
+    start: isDaylight(start),
+    middle: isDaylight(middle),
+    end: isDaylight(end),
   };
 };
 

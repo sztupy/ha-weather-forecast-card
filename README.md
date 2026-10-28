@@ -268,6 +268,7 @@ When using chart mode (`mode: chart`), an interactive attribute selector allows 
 - `pressure` - Visualizes atmospheric pressure as line graph
 - `uv_index` - Visualizes UV index as a bar graph. Decimal values are rounded to integers as per WHO international standards for public health reporting, ensuring clear risk-category communication.
 - `cloud_coverage` - Visualizes cloud coverage as a line graph
+- `clear_sky` - Visualizes the clear sky percentage (100% minus cloud coverage) as a line graph. In the hourly forecast the line is yellow during the day and gray at night, fading between the two in the forecast slot where sunrise or sunset happens. Daily forecasts are drawn as daytime, and twice daily forecasts follow the day/night flag of each entry. Requires `cloud_coverage` in the forecast data.
 
 > [!NOTE]
 > Attributes are only shown in the selector if the data is available from your weather entity. If an attribute is not provided by your weather integration, it will not appear in the dropdown.
@@ -433,6 +434,8 @@ Add these variables to your Home Assistant theme to customize the card's appeara
 | `weather-forecast-card-chart-humidity-line-color`       | `var(--blue-color, #2196f3)`           | Chart line color for humidity attribute in chart mode                                                                      |
 | `weather-forecast-card-chart-pressure-line-color`       | `var(--cyan-color, #00bcd4)`           | Chart line color for pressure attribute in chart mode                                                                      |
 | `weather-forecast-card-chart-cloud-coverage-line-color` | `var(--grey-color, #9e9e9e)`           | Chart line color for cloud coverage attribute in chart mode                                                                |
+| `weather-forecast-card-chart-clear-sky-day-color`       | `var(--yellow-color, #ffeb3b)`         | Chart line color for the clear sky attribute during daytime in chart mode                                                  |
+| `weather-forecast-card-chart-clear-sky-night-color`     | `var(--grey-color, #9e9e9e)`           | Chart line color for the clear sky attribute at night in chart mode                                                        |
 | `weather-forecast-card-chart-uv-bar-color`              | `var(--amber-color, #ffc107)`          | Fallback chart bar color for UV index when value is missing/unknown; normal UV bars use `weather-forecast-card-uv-*-color` |
 | `weather-forecast-card-uv-low-color`                    | `#289500`                              | UV index bar color for low risk level (0-2)                                                                                |
 | `weather-forecast-card-uv-moderate-color`               | `#f7e400`                              | UV index bar color for moderate risk level (3-5)                                                                           |

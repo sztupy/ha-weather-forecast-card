@@ -1,7 +1,7 @@
 import { html, LitElement, nothing, PropertyValues, TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { DragScrollController } from "../controllers/drag-scroll-controller";
-import { formatDay } from "../helpers";
+import { formatDay, getForecastSlotDaylight } from "../helpers";
 import { styleMap } from "lit/directives/style-map.js";
 import { classMap } from "lit/directives/class-map.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
@@ -62,6 +62,11 @@ Chart.register(
 
 type ForecastLineType = "temperature" | "templow";
 
+type AttributeLineStyle = Pick<
+  ChartDataset<"line">,
+  "borderColor" | "pointBackgroundColor" | "pointBorderColor"
+>;
+
 type ForecastLineStyle = Pick<
   ChartDataset<"line">,
   | "borderColor"
@@ -94,6 +99,9 @@ const CHART_LABEL_VERTICAL_PADDING = 10;
 
 // Default chart height in pixels at the baseline font size, used as a reference for scaling the chart height dynamically.
 const DEFAULT_CHART_HEIGHT = 130;
+
+// Home Assistant has no translation for clear sky, so the label is not localized.
+const CLEAR_SKY_LABEL = "Clear sky";
 
 /**
  * A chart component to display weather forecast data.
@@ -218,13 +226,7 @@ export class WfcForecastChart extends LitElement {
                   <ha-icon
                     .icon=${this._settingsOpen
                       ? "mdi:close"
-                      : this._selectedAttribute ===
-                          "temperature_and_precipitation"
-                        ? "mdi:water-thermometer"
-                        : WEATHER_ATTRIBUTE_ICON_MAP[
-                            this
-                              ._selectedAttribute as keyof typeof WEATHER_ATTRIBUTE_ICON_MAP
-                          ]}
+                      : this._getAttributeIcon(this._selectedAttribute)}
                   ></ha-icon>
                 </ha-button>
               </div>`
@@ -424,6 +426,7 @@ export class WfcForecastChart extends LitElement {
       case "pressure":
       case "apparent_temperature":
       case "cloud_coverage":
+      case "clear_sky":
         return this._getSelectedAttributeConfig(data, style, baseOptions);
       case "temperature_and_precipitation":
       default:
@@ -607,7 +610,7 @@ export class WfcForecastChart extends LitElement {
     style: CSSStyleDeclaration,
     options: ChartOptions
   ): ChartConfiguration {
-    const attr = this._selectedAttribute as keyof ForecastAttribute;
+    const attr = this._selectedAttribute;
     const colorVar =
       attr === "humidity"
         ? "--wfc-chart-humidity-line-color"
@@ -620,10 +623,14 @@ export class WfcForecastChart extends LitElement {
     const color =
       style.getPropertyValue(colorVar) ||
       style.getPropertyValue("--wfc-chart-default-line-color");
+    const lineStyle: AttributeLineStyle =
+      attr === "clear_sky"
+        ? this._getClearSkyLineStyle(data, style)
+        : { borderColor: color, pointBackgroundColor: color };
     const labelColor = style.getPropertyValue("--wfc-chart-label-color");
     const unit = getWeatherUnit(this.hass, this.weatherEntity, attr);
 
-    const values = data.map((f) => (f[attr] as number) ?? 0);
+    const values = data.map((f) => this._getAttributeValue(f, attr) ?? 0);
     const dataMax = Math.max(...values);
     const dataMin = Math.min(...values);
     const range = dataMax - dataMin || 1; // Fallback to 1 if all values are the same
@@ -637,9 +644,8 @@ export class WfcForecastChart extends LitElement {
         labels: data.map((f) => f.datetime),
         datasets: [
           {
-            data: data.map((f) => (f[attr] as number) ?? null),
-            borderColor: color,
-            pointBackgroundColor: color,
+            data: data.map((f) => this._getAttributeValue(f, attr)),
+            ...lineStyle,
             fill: false,
             datalabels: {
               anchor: "end",
@@ -671,6 +677,79 @@ export class WfcForecastChart extends LitElement {
           },
         },
       }),
+    };
+  }
+
+  private _getAttributeValue(
+    forecast: ForecastAttribute,
+    attr: ChartAttributes
+  ): number | null {
+    if (attr === "clear_sky") {
+      return forecast.cloud_coverage != null
+        ? 100 - forecast.cloud_coverage
+        : null;
+    }
+
+    return (forecast[attr as keyof ForecastAttribute] as number) ?? null;
+  }
+
+  /**
+   * Colors the clear sky line by daylight: day slots use the day color, night slots the
+   * night color, and a slot containing a sunrise or sunset fades between the two across
+   * its width.
+   */
+  private _getClearSkyLineStyle(
+    data: ForecastAttribute[],
+    style: CSSStyleDeclaration
+  ): AttributeLineStyle {
+    const dayColor = style.getPropertyValue("--wfc-chart-clear-sky-day-color");
+    const nightColor = style.getPropertyValue(
+      "--wfc-chart-clear-sky-night-color"
+    );
+    const toColor = (isDaylight: boolean) =>
+      isDaylight ? dayColor : nightColor;
+
+    const daylight = data.map((f) =>
+      getForecastSlotDaylight(this.hass, f, this.forecastType)
+    );
+
+    const lineColor = (
+      context: ScriptableContext<"line">
+    ): CanvasGradient | Color => {
+      const { ctx, chartArea } = context.chart;
+      const xScale = context.chart.scales.x;
+
+      if (!chartArea || !xScale?.width || !daylight.length) {
+        return dayColor;
+      }
+
+      const gradient = ctx.createLinearGradient(
+        xScale.left,
+        0,
+        xScale.right,
+        0
+      );
+
+      // The x scale is offset, so each forecast slot owns an equal share of its width.
+      const slotWidth = 1 / daylight.length;
+      daylight.forEach((slot, index) => {
+        gradient.addColorStop(index * slotWidth, toColor(slot.start));
+        gradient.addColorStop(
+          Math.min((index + 1) * slotWidth, 1),
+          toColor(slot.end)
+        );
+      });
+
+      return gradient;
+    };
+
+    const pointColor = (context: ScriptableContext<"line">) =>
+      toColor(daylight[context.dataIndex]?.middle ?? true);
+
+    return {
+      borderColor: lineColor,
+      pointBorderColor: pointColor,
+      pointBackgroundColor: pointColor,
     };
   }
 
@@ -988,6 +1067,10 @@ export class WfcForecastChart extends LitElement {
       return this.hass.localize("ui.card.weather.forecast");
     }
 
+    if (this._selectedAttribute === "clear_sky") {
+      return CLEAR_SKY_LABEL;
+    }
+
     return (
       this.hass.formatEntityAttributeName(
         this.weatherEntity,
@@ -1008,6 +1091,10 @@ export class WfcForecastChart extends LitElement {
         return true;
       }
 
+      if (attr === "clear_sky") {
+        return forecast.some((f) => f.cloud_coverage != null);
+      }
+
       return forecast.some((f) => {
         const value = f[attr as keyof ForecastAttribute];
         return value != null;
@@ -1018,14 +1105,24 @@ export class WfcForecastChart extends LitElement {
       label:
         attr === "temperature_and_precipitation"
           ? `${this.hass.formatEntityAttributeName(this.weatherEntity, "temperature")}, ${this.hass.localize("ui.card.weather.attributes.precipitation")}`
-          : this.hass.formatEntityAttributeName(this.weatherEntity, attr) ||
-            attr,
-      icon:
-        attr === "temperature_and_precipitation"
-          ? "mdi:water-thermometer"
-          : WEATHER_ATTRIBUTE_ICON_MAP[attr as CurrentWeatherAttributes],
+          : attr === "clear_sky"
+            ? CLEAR_SKY_LABEL
+            : this.hass.formatEntityAttributeName(this.weatherEntity, attr) ||
+              attr,
+      icon: this._getAttributeIcon(attr),
       value: attr,
     }));
+  }
+
+  private _getAttributeIcon(attr: ChartAttributes): string {
+    switch (attr) {
+      case "temperature_and_precipitation":
+        return "mdi:water-thermometer";
+      case "clear_sky":
+        return "mdi:weather-sunny";
+      default:
+        return WEATHER_ATTRIBUTE_ICON_MAP[attr as CurrentWeatherAttributes];
+    }
   }
 
   private _onAttributesSelected(e: CustomEvent): void {
