@@ -56,6 +56,7 @@ export const CHART_ATTRIBUTES = [
   "humidity",
   "pressure",
   "uv_index",
+  "cloud_coverage",
 ] as const;
 
 export type ChartAttributes = (typeof CHART_ATTRIBUTES)[number];

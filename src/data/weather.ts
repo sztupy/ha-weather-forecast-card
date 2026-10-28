@@ -44,6 +44,7 @@ export interface ForecastAttribute {
   wind_bearing?: number | string;
   uv_index?: number;
   apparent_temperature?: number;
+  cloud_coverage?: number;
 }
 
 export interface WeatherEntityAttributes extends HassEntityAttributeBase {
@@ -538,6 +539,9 @@ export const aggregateHourlyForecastData = (
     const validApparentTemp = group
       .map((e) => e.apparent_temperature)
       .filter((e): e is number => e !== undefined);
+    const validCloudCoverage = group
+      .map((e) => e.cloud_coverage)
+      .filter((e): e is number => e !== undefined);
 
     const lastEntryDate = new Date(group[group.length - 1]!.datetime);
     lastEntryDate.setMinutes(59);
@@ -593,6 +597,10 @@ export const aggregateHourlyForecastData = (
       aggregatedEntry.apparent_temperature = parseFloat(
         average(validApparentTemp).toFixed(1)
       );
+    }
+
+    if (validCloudCoverage.length > 0) {
+      aggregatedEntry.cloud_coverage = Math.round(average(validCloudCoverage));
     }
 
     groupedForecast.push(aggregatedEntry);

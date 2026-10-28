@@ -595,6 +595,7 @@ describe("weather-forecast-card chart", () => {
       pressure: 1010 + i * 2,
       uv_index: i + 1,
       apparent_temperature: f.temperature - 2,
+      cloud_coverage: Math.min(i * 20, 100),
     }));
 
     it("should not render attribute selector when show_attribute_selector is false", async () => {
@@ -775,6 +776,41 @@ describe("weather-forecast-card chart", () => {
       });
     });
 
+    it("should update chart when cloud_coverage attribute is selected", async () => {
+      const { card } = await createCardFixture({
+        forecast: { mode: ForecastMode.Chart, show_attribute_selector: true },
+      });
+
+      const chartElement = card.shadowRoot!.querySelector(
+        "wfc-forecast-chart"
+      ) as WfcForecastChart;
+
+      chartElement.forecast = forecastWithAllAttributes;
+      await chartElement.updateComplete;
+
+      const dropdown = chartElement.querySelector(
+        "wfc-chart-attribute-selector"
+      );
+      dropdown!.dispatchEvent(
+        new CustomEvent("selected", { detail: { value: "cloud_coverage" } })
+      );
+      await chartElement.updateComplete;
+
+      // @ts-expect-error: _chart is private
+      const chartInstance = chartElement._chart;
+      const datasets = chartInstance!.data.datasets;
+      expect(datasets.length).toBe(1);
+
+      // Cloud coverage uses a plain line chart
+      expect(datasets[0].type).toBeUndefined();
+      expect(datasets[0].fill).toBe(false);
+
+      const cloudData = datasets[0].data;
+      forecastWithAllAttributes.forEach((f, i) => {
+        expect(cloudData[i]).toBe(f.cloud_coverage);
+      });
+    });
+
     it("should update chart when apparent_temperature attribute is selected", async () => {
       const { card } = await createCardFixture({
         forecast: { mode: ForecastMode.Chart, show_attribute_selector: true },
@@ -877,6 +913,7 @@ describe("weather-forecast-card chart", () => {
       expect(optionValues).toContain("humidity");
       expect(optionValues).toContain("pressure");
       expect(optionValues).not.toContain("uv_index");
+      expect(optionValues).not.toContain("cloud_coverage");
     });
 
     it("should close dropdown when closed event is fired", async () => {

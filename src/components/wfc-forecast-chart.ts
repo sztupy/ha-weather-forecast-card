@@ -423,6 +423,7 @@ export class WfcForecastChart extends LitElement {
       case "humidity":
       case "pressure":
       case "apparent_temperature":
+      case "cloud_coverage":
         return this._getSelectedAttributeConfig(data, style, baseOptions);
       case "temperature_and_precipitation":
       default:
@@ -612,7 +613,9 @@ export class WfcForecastChart extends LitElement {
         ? "--wfc-chart-humidity-line-color"
         : attr === "pressure"
           ? "--wfc-chart-pressure-line-color"
-          : "--wfc-chart-temp-high-line-color";
+          : attr === "cloud_coverage"
+            ? "--wfc-chart-cloud-coverage-line-color"
+            : "--wfc-chart-temp-high-line-color";
 
     const color =
       style.getPropertyValue(colorVar) ||

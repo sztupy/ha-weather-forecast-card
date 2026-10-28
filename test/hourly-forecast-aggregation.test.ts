@@ -223,4 +223,50 @@ describe("aggregateHourlyForecastData", () => {
       expect(result[0]?.apparent_temperature).toBeUndefined();
     });
   });
+
+  describe("cloud_coverage aggregation", () => {
+    it("should average cloud_coverage when hourly_group_size is 2", () => {
+      const forecast: ForecastAttribute[] = [
+        {
+          datetime: "2024-01-01T10:00:00",
+          temperature: 20,
+          cloud_coverage: 20,
+        },
+        {
+          datetime: "2024-01-01T11:00:00",
+          temperature: 21,
+          cloud_coverage: 45,
+        },
+        {
+          datetime: "2024-01-01T12:00:00",
+          temperature: 22,
+          cloud_coverage: 80,
+        },
+        {
+          datetime: "2024-01-01T13:00:00",
+          temperature: 23,
+          cloud_coverage: 100,
+        },
+      ];
+
+      const result = aggregateHourlyForecastData(forecast, 2);
+
+      expect(result).toHaveLength(2);
+      // Average of 20 and 45, rounded
+      expect(result[0]?.cloud_coverage).toBe(33);
+      expect(result[1]?.cloud_coverage).toBe(90);
+    });
+
+    it("should not include cloud_coverage when all values are missing in group", () => {
+      const forecast: ForecastAttribute[] = [
+        { datetime: "2024-01-01T10:00:00", temperature: 20 },
+        { datetime: "2024-01-01T11:00:00", temperature: 21 },
+      ];
+
+      const result = aggregateHourlyForecastData(forecast, 2);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.cloud_coverage).toBeUndefined();
+    });
+  });
 });

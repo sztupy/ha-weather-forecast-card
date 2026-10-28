@@ -61,6 +61,10 @@
     --weather-forecast-card-chart-pressure-line-color,
     var(--cyan-color, #00bcd4)
   );
+  --wfc-chart-cloud-coverage-line-color: var(
+    --weather-forecast-card-chart-cloud-coverage-line-color,
+    var(--grey-color, #9e9e9e)
+  );
   --wfc-chart-uv-bar-color: var(
     --weather-forecast-card-chart-uv-bar-color,
     var(--amber-color, #ffc107)
